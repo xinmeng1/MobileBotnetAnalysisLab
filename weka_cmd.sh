@@ -1,0 +1,1 @@
+ java weka.core.converters.TextDirectoryLoader -dir C:\IOT@Work_Project\tshark\SampleDataTXTlabeled2 > C:\IOT@Work_Project\tshark\SampleDataARFFlabeled2/data.arff
