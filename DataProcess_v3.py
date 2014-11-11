@@ -2,7 +2,7 @@
 # ############################################
 ##Sample data process V3.0
 ##Author:Xin Meng
-##Data:  2014 Nov 11th
+##Data:  2014 Nov. 11th
 ##Description: Process the packet file and combinate the packet with same stream index into one stream
 ##             And generate the dataset based on the stream.
 ##
