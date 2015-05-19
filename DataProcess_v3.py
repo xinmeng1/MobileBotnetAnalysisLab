@@ -304,6 +304,7 @@ def decision_normal_infect(a_normal_packet, b_infect_packet):
     #example:  192.168.123.***
     #Step1: compare with google public IP address
     #Step2: wildcard of the last 3 number of the IP address
+
     #####Step 1
     #Load the public IP range address from database dir : public_ip_range.txt
     flag_public_range = 0
@@ -370,12 +371,18 @@ def decision_normal_infect(a_normal_packet, b_infect_packet):
 
 def normal_process(normal_file_no):
     global normal_db_size
+    #Stream: initial 2 dimensions array to store the packet base on the stream index
+
+    tcp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(1500)]
+    udp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(10000)]
+    num_udp_stream = 0
+    num_tcp_stream = 0
 
     process_normal_file = input_normal_dir + normal_input_file_list[normal_file_no - 1]
     print (process_normal_file)
     #Load Normal Packet database, if the file not exist, create it. And append the file every process
     #normal_db = open(normal_db_dir + normal_db_file, 'a+')
-    normal_db_temp = [[0 for col in range(8)] for row in range(0)]
+    normal_db_temp = [[0 for col in range(10)] for row in range(0)]
     with open(normal_db_dir + normal_db_file, 'a+') as normal_db:
         for normal_db_line in normal_db:
             #normal_db_array = normal_db_line.split()
@@ -387,12 +394,26 @@ def normal_process(normal_file_no):
     with open(output_csv_dir + normal_input_file_list[normal_file_no - 1] + output_extension, 'wSb+') as csv_file:
         csv_writer = csv.writer(csv_file, dialect='excel')
         csv_writer.writerow(
-            ['IP source', 'IP des', 'Protocol', 'UDP size', 'TCP size', 'TCP duration', 'Argument Count', 'Lable'])
+            ['IP source', 'IP des', 'Protocol', 'Frame duration', 'UDP size', 'TCP size', 'Argument Count', 'Lable'])
+
+    #Stream: The output file will store the stream information
     #process every line in the normal file
+    # -e ip.src -e ip.dst -e ip.proto
+    # -e frame.time_delta
+    # -e udp.length -e udp.stream
+    # -e tcp.len -e tcp.stream
+    # -e http.request.uri
+    #The structure of every line: 9 if
+    # IP source 0 , IP destination 1, IP protocol 2,
+    # Frame duration 3,
+    # UDP size 4, UDP stream index 5,
+    # TCP size 6, TCP stream index 7,
+    # URL 8
     for txt_line in open(process_normal_file):
         txt_array = txt_line.split()
-        if 0 == len(txt_array):
-            break
+        #重新构造txt_array
+        if 6 > len(txt_array):
+            continue
         if len(txt_array[0]) <= 15:
             #IP地址长度大于255.255.255.255,则为IPv6
             IP_source = ip2int(txt_array[0])
@@ -403,20 +424,21 @@ def normal_process(normal_file_no):
             if txt_array[2] != '17':
                 #TCP 6 UDP 17
                 #if not UDP, SET udp size AS 0
-                txt_array.insert(3, '0')
-            if txt_array[2] != '6':
                 txt_array.insert(4, '0')
                 txt_array.insert(5, '0')
+            if txt_array[2] != '6':
                 txt_array.insert(6, '0')
+                txt_array.insert(7, '0')
+                txt_array.insert(8, '0')
             else:
-                if len(txt_array) == 7:
+                if len(txt_array) == 9:
                     #include the HTTP request uri
-                    arg_num = txt_array.pop(6).count('=')
-                    txt_array.insert(6, str(arg_num))
+                    arg_num = txt_array.pop(8).count('=')
+                    txt_array.insert(8, str(arg_num))
                 else:
                     arg_num = 0
-                    txt_array.insert(6, str(arg_num))
-            txt_array.insert(7, 'normal')
+                    txt_array.insert(8, str(arg_num))
+            txt_array.insert(9, 'normal')
             #Decisied whether the packet has already existed in the normal_db
             status = 0
             for i in normal_db_temp:
@@ -439,13 +461,56 @@ def normal_process(normal_file_no):
                     #txt_array_convert = ' '.join(str(txt_array))
                     normal_db.writelines(s)
 
+            #将该txt_array加入到 Stream中,最后将Stream写入CSV文件
+            if '17' == txt_array[2]:
+                # UDP process
+                udp_stream[int(txt_array[5])].append(txt_array)
+
+            elif '6' == txt_array[2]:
+                # TCP process
+                tcp_stream[int(txt_array[7])].append(txt_array)
+
+
+    for packet_list in udp_stream:
+        #组合udp_stream中的每个stream的packet,将信息存储在CSV文件中.
+        if len(packet_list) != 0:
+            # 8 ['IP source', 'IP des', 'Protocol', 'Frame duration', 'UDP size', 'TCP size', 'Argument Count', 'Lable'])
+            stream_temp = [0 for col in range(8)]
+            stream_temp[0] = packet_list[0][0]
+            stream_temp[1] = packet_list[0][1]
+            stream_temp[2] = packet_list[0][2]
+            for packet in packet_list:
+                stream_temp[3] += float(packet[3])
+                stream_temp[4] += int(packet[4])
+            stream_temp[5] = 0
+            stream_temp[6] = 0
+            stream_temp[7] = packet_list[0][9]
             #Write the CSV file for the normal files.
             with open(output_csv_dir + normal_input_file_list[normal_file_no - 1] + output_extension, 'ab+') \
                     as csv_file:
                 csv_writer = csv.writer(csv_file, dialect='excel')
-                csv_writer.writerow(txt_array)
-
-
+                csv_writer.writerow(stream_temp)
+            num_udp_stream += 1
+    for packet_list in tcp_stream:
+        #组合udp_stream中的每个stream的packet,将信息存储在CSV文件中.
+        if len(packet_list) != 0:
+            # 8 ['IP source', 'IP des', 'Protocol', 'Frame duration', 'UDP size', 'TCP size', 'Argument Count', 'Lable'])
+            stream_temp = [0 for col in range(8)]
+            stream_temp[0] = packet_list[0][0]
+            stream_temp[1] = packet_list[0][1]
+            stream_temp[2] = packet_list[0][2]
+            for packet in packet_list:
+                stream_temp[3] += float(packet[3])
+                stream_temp[5] += int(packet[6])
+                stream_temp[6] += int(packet[8])
+            stream_temp[4] = 0
+            stream_temp[7] = packet_list[0][9]
+            #Write the CSV file for the normal files.
+            with open(output_csv_dir + normal_input_file_list[normal_file_no - 1] + output_extension, 'ab+') \
+                    as csv_file:
+                csv_writer = csv.writer(csv_file, dialect='excel')
+                csv_writer.writerow(stream_temp)
+            num_tcp_stream += 1
 ####################################################
 ########## FUNCTION: Process Normal File
 ########## Input: The number of the files in the normal list
@@ -455,12 +520,17 @@ def normal_process(normal_file_no):
 def infect_process(infect_file_no):
     global num_packet_label_infect
     global num_packet_label_normal
+    logger.info("Start to process the infect file")
+    tcp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(1500)]
+    udp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(15000)]
+    num_udp_stream = 0
+    num_tcp_stream = 0
 
     process_infect_file = input_infect_dir + infect_input_file_list[infect_file_no - 1]
     print (process_infect_file)
     #Load Normal Packet database, if the file not exist, create it. And append the file every process
     #normal_db = open(normal_db_dir + normal_db_file, 'a+')
-    normal_db_temp = [[0 for col in range(8)] for row in range(0)]
+    normal_db_temp = [[0 for col in range(10)] for row in range(0)]
     with open(normal_db_dir + normal_db_file, 'a+') as normal_db:
         for normal_db_line in normal_db:
             #normal_db_array = normal_db_line.split()
@@ -471,12 +541,15 @@ def infect_process(infect_file_no):
     with open(output_csv_dir + infect_input_file_list[infect_file_no - 1] + output_extension, 'wSb+') as csv_file:
         csv_writer = csv.writer(csv_file, dialect='excel')
         csv_writer.writerow(
-            ['IP source', 'IP des', 'Protocol', 'UDP size', 'TCP size', 'TCP duration', 'Argument Count', 'Lable'])
-    #process every line in the normal file
+            ['IP source', 'IP des', 'Protocol', 'Frame duration', 'UDP size', 'TCP size', 'Argument Count', 'Lable'])
+    #process every line in the normal
+    num_txt_line = 0
     for txt_line in open(process_infect_file):
+        logger.info("Process the txt line: "+str(num_txt_line))
+        num_txt_line += 1
         txt_array = txt_line.split()
-        if 0 == len(txt_array):
-            break
+        if 6 > len(txt_array):
+            continue
         if len(txt_array[0]) <= 15:
             #IP地址长度大于255.255.255.255,则为IPv6
             IP_source = ip2int(txt_array[0])
@@ -487,19 +560,20 @@ def infect_process(infect_file_no):
             if txt_array[2] != '17':
                 #TCP 6 UDP 17
                 #if not UDP, SET udp size AS 0
-                txt_array.insert(3, '0')
-            if txt_array[2] != '6':
                 txt_array.insert(4, '0')
                 txt_array.insert(5, '0')
+            if txt_array[2] != '6':
                 txt_array.insert(6, '0')
+                txt_array.insert(7, '0')
+                txt_array.insert(8, '0')
             else:
-                if len(txt_array) == 7:
+                if len(txt_array) == 9:
                     #include the HTTP request uri
-                    arg_num = txt_array.pop(6).count('=')
-                    txt_array.insert(6, str(arg_num))
+                    arg_num = txt_array.pop(8).count('=')
+                    txt_array.insert(8, str(arg_num))
                 else:
                     arg_num = 0
-                    txt_array.insert(6, str(arg_num))
+                    txt_array.insert(8, str(arg_num))
 
             #Decisied whether the packet is Normal or Infect
             #We use some algorithms to compare with the normal database, and
@@ -509,18 +583,66 @@ def infect_process(infect_file_no):
             for i in normal_db_temp:
                 if 1 == decision_normal_infect(i, txt_array):
                     status = 1
-                    txt_array.insert(7, 'normal')
+                    txt_array.insert(9, 'normal')
                     num_packet_label_normal += 1
                     break
             if 0 == status:
-                txt_array.insert(7, 'infect')
+                txt_array.insert(9, 'infect')
                 num_packet_label_infect += 1
-            #Write the CSV file for the infect files.
-            with open(output_csv_dir + infect_input_file_list[infect_file_no - 1] + output_extension,
-                      'ab+') as csv_file:
-                csv_writer = csv.writer(csv_file, dialect='excel')
-                csv_writer.writerow(txt_array)
 
+            #将该txt_array加入到 Stream中,最后将Stream写入CSV文件
+            if '17' == txt_array[2]:
+                # UDP process
+                udp_stream[int(txt_array[5])].append(txt_array)
+                # print(int(txt_array[5]))
+            elif '6' == txt_array[2]:
+                # TCP process
+                tcp_stream[int(txt_array[7])].append(txt_array)
+                # print(int(txt_array[7]))
+    logger.info("Start to write the csv file")
+    for packet_list in udp_stream:
+        #组合udp_stream中的每个stream的packet,将信息存储在CSV文件中.
+        if len(packet_list) != 0:
+            # 8 ['IP source', 'IP des', 'Protocol', 'Frame duration', 'UDP size', 'TCP size', 'Argument Count', 'Lable'])
+            stream_temp = [0 for col in range(8)]
+            stream_temp[0] = packet_list[0][0]
+            stream_temp[1] = packet_list[0][1]
+            stream_temp[2] = packet_list[0][2]
+            for packet in packet_list:
+                stream_temp[3] += float(packet[3])
+                stream_temp[4] += int(packet[4])
+            stream_temp[5] = 0
+            stream_temp[6] = 0
+            stream_temp[7] = packet_list[0][9]
+            #Write the CSV file for the normal files.
+            with open(output_csv_dir + infect_input_file_list[infect_file_no - 1] + output_extension, 'ab+') \
+                    as csv_file:
+                csv_writer = csv.writer(csv_file, dialect='excel')
+                csv_writer.writerow(stream_temp)
+
+            num_udp_stream += 1
+    logger.info("Finish UDP CSV write, the sum of stream: "+str(num_udp_stream))
+    for packet_list in tcp_stream:
+        #组合udp_stream中的每个stream的packet,将信息存储在CSV文件中.
+        if len(packet_list) != 0:
+            # 8 ['IP source', 'IP des', 'Protocol', 'Frame duration', 'UDP size', 'TCP size', 'Argument Count', 'Lable'])
+            stream_temp = [0 for col in range(8)]
+            stream_temp[0] = packet_list[0][0]
+            stream_temp[1] = packet_list[0][1]
+            stream_temp[2] = packet_list[0][2]
+            for packet in packet_list:
+                stream_temp[3] += float(packet[3])
+                stream_temp[5] += int(packet[6])
+                stream_temp[6] += int(packet[8])
+            stream_temp[4] = 0
+            stream_temp[7] = packet_list[0][9]
+            #Write the CSV file for the normal files.
+            with open(output_csv_dir + infect_input_file_list[infect_file_no - 1] + output_extension, 'ab+') \
+                    as csv_file:
+                csv_writer = csv.writer(csv_file, dialect='excel')
+                csv_writer.writerow(stream_temp)
+            num_tcp_stream += 1
+    logger.info("Finish TCP CSV write, the sum of stream: "+str(num_tcp_stream))
 ####################################################
 ##########The main interactive of the Data Process
 ####################################################
