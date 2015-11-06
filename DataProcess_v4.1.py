@@ -21,6 +21,8 @@ import sys
 ###variable
 ###################################################
 # configuration variable
+from Tools.scripts.treesync import raw_input
+
 OutputCSVDir = ""
 ReportDir = ""
 NormalDBDir = ""
@@ -375,8 +377,8 @@ def normal_process(normal_file_no):
     global normal_db_size
     #Stream: initial 2 dimensions array to store the packet base on the stream index
 
-    tcp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(1500)]
-    udp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(10000)]
+    tcp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(50000)]
+    udp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(15000)]
     num_udp_stream = 0
     num_tcp_stream = 0
 
@@ -530,7 +532,7 @@ def infect_process(infect_file_no):
     global num_packet_label_infect
     global num_packet_label_normal
     logger.info("Start to process the infect file")
-    tcp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(1500)]
+    tcp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(50000)]
     udp_stream = [[[0 for col in range(0)] for row in range(0)] for high in range(15000)]
     num_udp_stream = 0
     num_tcp_stream = 0
